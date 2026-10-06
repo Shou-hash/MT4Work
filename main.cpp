@@ -1,51 +1,80 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
+#include <iostream>
 #include <windows.h>
-#include <functional> // std::function を使用するために必要
 
-// DelayReveal 関数：関数ポインタから std::function に変更
-void DelayReveal(std::function<void(int, int)> fn, unsigned int delayMs, int roll, int userGuess) {
-    printf("結果を判定中...\n");
+// 敵の行動フェーズ
+enum class Phase {
+    Approach, // 接近 (0)
+    Shoot,    // 射撃 (1)
+    Escape,   // 離脱 (2)
+    End       // 終了 (3)
+};
 
-    // 指定ミリ秒待機
-    Sleep(delayMs);
+// Enemyクラスの定義
+class Enemy {
+public:
+    Enemy() : phase_(Phase::Approach) {}
 
-    // コールバック関数の呼び出し
-    fn(roll, userGuess);
-}
+    // 状態更新処理
+    void Update() {
+        if (IsEnd()) {
+            return;
+        }
 
-int main(void) {
+        // enum classを配列インデックス用にキャストして関数テーブルから呼び出し
+        size_t index = static_cast<size_t>(phase_);
+        (this->*spFuncTable[index])();
+    }
+
+    // 行動終了の判定
+    bool IsEnd() const {
+        return phase_ == Phase::End;
+    }
+
+private:
+    // フェーズごとのメンバ関数
+    void Approach() {
+        std::cout << "[接近] 敵が接近してきました。" << std::endl;
+        phase_ = Phase::Shoot; // 射撃フェーズへ遷移
+    }
+
+    void Shoot() {
+        std::cout << "[射撃] 敵が射撃を行いました。" << std::endl;
+        phase_ = Phase::Escape; // 離脱フェーズへ遷移
+    }
+
+    void Escape() {
+        std::cout << "[離脱] 敵が戦域から離脱しました。" << std::endl;
+        phase_ = Phase::End; // 終了状態へ遷移
+    }
+
+private:
+    Phase phase_; // 現在のフェーズ
+
+    // メンバ関数ポインタテーブルの宣言
+    static void (Enemy::* spFuncTable[])();
+};
+
+// メンバ関数ポインタテーブルの実体定義
+void (Enemy::* Enemy::spFuncTable[])() = {
+    &Enemy::Approach, // 要素番号 0
+    &Enemy::Shoot,    // 要素番号 1
+    &Enemy::Escape    // 要素番号 2
+};
+
+int main() {
     // コンソールの文字化け防止（UTF-8指定）
     SetConsoleOutputCP(65001);
 
-    // シード初期化
-    srand((unsigned int)time(NULL));
+    Enemy enemy;
 
-    // ユーザー入力
-    int userGuess = 0;
-    printf("予想を入力してください（半(奇数) = 1 / 丁(偶数) = 0）: ");
-    scanf_s("%d", &userGuess);
+    std::cout << "--- 敵の状態遷移開始 ---" << std::endl;
 
-    // 1〜6の乱数を生成
-    int roll = (rand() % 6) + 1;
+    // 敵が離脱を完了するまでループ処理
+    while (!enemy.IsEnd()) {
+        enemy.Update();
+    }
 
-    // 【書き換えポイント】
-    // std::function 変数に判定処理のラムダ式を代入[cite: 47, 50]
-    std::function<void(int, int)> ShowResult = [](int roll, int userGuess) {
-        printf("出目は %d でした。\n", roll);
-
-        int result = roll % 2;
-        if (result == userGuess) {
-            printf("正解\n");
-        }
-        else {
-            printf("不正解\n");
-        }
-        };
-
-    // DelayReveal の呼び出し
-    DelayReveal(ShowResult, 3000, roll, userGuess);
+    std::cout << "--- 敵の状態遷移終了 ---" << std::endl;
 
     return 0;
 }

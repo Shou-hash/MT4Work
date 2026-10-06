@@ -6,5 +6,5 @@
   <Folder Name="/ソリューション項目/">
     <File Path=".editorconfig" />
   </Folder>
-  <Project Path="PG3.vcxproj" />
+  <Project Path="PG3.vcxproj" Id="d25bd79a-a984-4bfd-8923-211cf1c3ee0c" />
 </Solution>
