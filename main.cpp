@@ -23,8 +23,47 @@ struct Matrix4x4 {
 };
 
 // ----------------------------------------------------------------
-// Quaternion 基本演算関数
+// 演算子オーバーロード
 // ----------------------------------------------------------------
+Vector3 operator-(const Vector3& v) {
+	return { -v.x, -v.y, -v.z };
+}
+
+// ----------------------------------------------------------------
+// ベクトル・Quaternion 基本演算関数
+// ----------------------------------------------------------------
+
+// 内積 (Dot)
+float Dot(const Vector3& v1, const Vector3& v2) {
+	return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+}
+
+// 外積 (Cross)
+Vector3 Cross(const Vector3& v1, const Vector3& v2) {
+	return {
+		v1.y * v2.z - v1.z * v2.y,
+		v1.z * v2.x - v1.x * v2.z,
+		v1.x * v2.y - v1.y * v2.x
+	};
+}
+
+// ベクトルの正規化 (Vector3)
+Vector3 Normalize(const Vector3& v) {
+	float length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+	if (length != 0.0f) {
+		return { v.x / length, v.y / length, v.z / length };
+	}
+	return { 0.0f, 0.0f, 0.0f };
+}
+
+// Quaternion の正規化
+Quaternion Normalize(const Quaternion& q) {
+	float norm = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+	if (norm != 0.0f) {
+		return { q.x / norm, q.y / norm, q.z / norm, q.w / norm };
+	}
+	return { 0.0f, 0.0f, 0.0f, 1.0f };
+}
 
 // クォータニオンの積 (Multiply)
 Quaternion Multiply(const Quaternion& lhs, const Quaternion& rhs) {
@@ -39,15 +78,6 @@ Quaternion Multiply(const Quaternion& lhs, const Quaternion& rhs) {
 // 共役 Quaternion (Conjugate)
 Quaternion Conjugate(const Quaternion& quaternion) {
 	return { -quaternion.x, -quaternion.y, -quaternion.z, quaternion.w };
-}
-
-// ベクトルの正規化 (Vector3)
-Vector3 Normalize(const Vector3& v) {
-	float length = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-	if (length != 0.0f) {
-		return { v.x / length, v.y / length, v.z / length };
-	}
-	return { 0.0f, 0.0f, 0.0f };
 }
 
 // 行列によるベクトルの変換 (Transform)
@@ -67,12 +97,12 @@ Vector3 Transform(const Vector3& vector, const Matrix4x4& matrix) {
 }
 
 // ----------------------------------------------------------------
-// 【課題指定】 Quaternion 応用関数
+// Quaternion 応用関数
 // ----------------------------------------------------------------
 
-// 1. 任意軸回転を表す Quaternion の生成
+// 任意軸回転を表す Quaternion の生成
 Quaternion MakeRotateAxisAngleQuaternion(const Vector3& axis, float angle) {
-	Vector3 normAxis = Normalize(axis); // 回転軸は必ず単位ベクトルにする
+	Vector3 normAxis = Normalize(axis);
 	float halfAngle = angle * 0.5f;
 	float sinHalf = std::sin(halfAngle);
 	float cosHalf = std::cos(halfAngle);
@@ -85,23 +115,17 @@ Quaternion MakeRotateAxisAngleQuaternion(const Vector3& axis, float angle) {
 	};
 }
 
-// 2. ベクトルを Quaternion で回転させた結果のベクトルを求める
+// ベクトルを Quaternion で回転させた結果のベクトルを求める
 Vector3 RotateVector(const Vector3& vector, const Quaternion& quaternion) {
-	// ベクトル v を Quaternion r = (v.x, v.y, v.z, 0) に変換
 	Quaternion r = { vector.x, vector.y, vector.z, 0.0f };
 	Quaternion qConj = Conjugate(quaternion);
-
-	// r' = q * r * q*
 	Quaternion rPrime = Multiply(Multiply(quaternion, r), qConj);
-
-	// 回転後のベクトル部を返す
 	return { rPrime.x, rPrime.y, rPrime.z };
 }
 
-// 3. Quaternion から回転行列を求める
+// Quaternion から回転行列を求める
 Matrix4x4 MakeRotateMatrix(const Quaternion& q) {
 	Matrix4x4 result;
-
 	float x = q.x, y = q.y, z = q.z, w = q.w;
 
 	result.m[0][0] = w * w + x * x - y * y - z * z;
@@ -125,6 +149,32 @@ Matrix4x4 MakeRotateMatrix(const Quaternion& q) {
 	result.m[3][3] = 1.0f;
 
 	return result;
+}
+
+// 【課題指定】 from を to へ向ける単位 Quaternion を返す関数
+Quaternion DirectionToDirection(const Vector3& from, const Vector3& to) {
+	float dot = Dot(from, to);
+	const float tolerance = 1.0e-6f;
+
+	// 真逆の向きの場合
+	if (dot <= -1.0f + tolerance) {
+		Vector3 axis;
+		if (std::abs(from.x) > 1.0e-5f || std::abs(from.y) > 1.0e-5f) {
+			axis = Normalize(Vector3{ from.y, -from.x, 0.0f });
+		}
+		else {
+			axis = Normalize(Vector3{ from.z, 0.0f, -from.x });
+		}
+		return Quaternion{ axis.x, axis.y, axis.z, 0.0f };
+	}
+
+	// 通常ケース（同じ向き含む）
+	Vector3 cross = Cross(from, to);
+	Quaternion rotation{
+		cross.x, cross.y, cross.z,
+		1.0f + dot
+	};
+	return Normalize(rotation);
 }
 
 // ----------------------------------------------------------------
@@ -163,13 +213,17 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	char preKeys[256] = { 0 };
 
 	// 課題指定のテストデータ
-	Quaternion rotation = MakeRotateAxisAngleQuaternion(
-		Normalize(Vector3{ 1.0f, 0.4f, -0.2f }), 0.45f
-	);
-	Vector3 pointY = { 2.1f, -0.9f, 1.3f };
-	Matrix4x4 rotateMatrix = MakeRotateMatrix(rotation);
-	Vector3 rotateByQuaternion = RotateVector(pointY, rotation);
-	Vector3 rotateByMatrix = Transform(pointY, rotateMatrix);
+	Vector3 from0 = Normalize(Vector3{ 1.0f, 0.7f, 0.5f });
+	Vector3 to0 = -from0;
+	Vector3 from1 = Normalize(Vector3{ -0.6f, 0.9f, 0.2f });
+	Vector3 to1 = Normalize(Vector3{ 0.4f, 0.7f, -0.5f });
+
+	Matrix4x4 rotateMatrix0 = MakeRotateMatrix(DirectionToDirection(
+		Normalize(Vector3{ 1.0f, 0.0f, 0.0f }),
+		Normalize(Vector3{ -1.0f, 0.0f, 0.0f })
+	));
+	Matrix4x4 rotateMatrix1 = MakeRotateMatrix(DirectionToDirection(from0, to0));
+	Matrix4x4 rotateMatrix2 = MakeRotateMatrix(DirectionToDirection(from1, to1));
 
 	// メインループ
 	while (Novice::ProcessMessage() == 0) {
@@ -182,11 +236,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		/// ↓更新・描画処理ここから
 		///
 
-		// スライド（画像2）と同じ ScreenPrintf による結果表示
-		QuaternionScreenPrintf(0, kRowHeight * 0, rotation, " : rotation");
-		MatrixScreenPrintf(0, kRowHeight * 1, rotateMatrix, "rotateMatrix");
-		VectorScreenPrintf(0, kRowHeight * 6, rotateByQuaternion, " : rotateByQuaternion");
-		VectorScreenPrintf(0, kRowHeight * 7, rotateByMatrix, " : rotateByMatrix");
+		MatrixScreenPrintf(0, 0, rotateMatrix0, "rotateMatrix0");
+		MatrixScreenPrintf(0, kRowHeight * 5, rotateMatrix1, "rotateMatrix1");
+		MatrixScreenPrintf(0, kRowHeight * 10, rotateMatrix2, "rotateMatrix2");
 
 		///
 		/// ↑更新・描画処理ここまで
