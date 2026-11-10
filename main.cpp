@@ -1,7 +1,6 @@
 #include <Novice.h>
 #include <imgui.h>
 #include <cmath>
-#include <algorithm>
 
 // ----------------------------------------------------------------
 // 構造体定義
@@ -22,28 +21,17 @@ Vector2 operator-(const Vector2& v1, const Vector2& v2) {
 	return { v1.x - v2.x, v1.y - v2.y };
 }
 
-Vector2 operator*(const Vector2& v, float scalar) {
-	return { v.x * scalar, v.y * scalar };
+Vector2 operator*(const Vector2& v, float s) {
+	return { v.x * s, v.y * s };
 }
 
-Vector2 operator*(float scalar, const Vector2& v) {
-	return { v.x * scalar, v.y * scalar };
+Vector2 operator*(float s, const Vector2& v) {
+	return { v.x * s, v.y * s };
 }
 
 // ----------------------------------------------------------------
 // 関数定義
 // ----------------------------------------------------------------
-
-// 台の形 f(x) (位置を渡すと高さを返す)
-float f(float x) {
-	return 0.125f * x * x * x + 0.25f * x * x;
-}
-
-// 導関数 f'(x) (位置を渡すと傾きを返す)
-// f(x) = (1/8)x^3 + (1/4)x^2 を微分 -> f'(x) = (3/8)x^2 + (1/2)x = 0.375x^2 + 0.5x
-float fPrime(float x) {
-	return 0.375f * x * x + 0.5f * x;
-}
 
 // ベクトルの正規化
 Vector2 Normalize(const Vector2& v) {
@@ -54,23 +42,21 @@ Vector2 Normalize(const Vector2& v) {
 	return { 0.0f, 0.0f };
 }
 
-// ワールド座標からスクリーン座標への変換
-Vector2 WorldToScreen(const Vector2& worldPos) {
-	return {
-		400.0f + 240.0f * worldPos.x,
-		640.0f - 240.0f * worldPos.y
-	};
+// 【課題指定 1】位置を返す Bezier
+Vector2 Bezier(const Vector2& p0, const Vector2& p1, const Vector2& p2, float t) {
+	return (1.0f - t) * (1.0f - t) * p0 + 2.0f * t * (1.0f - t) * p1 + t * t * p2;
+}
+
+// 【課題指定 1】接線ベクトルを返す BezierDerivative
+Vector2 BezierDerivative(const Vector2& p0, const Vector2& p1, const Vector2& p2, float t) {
+	return 2.0f * (1.0f - t) * (p1 - p0) + 2.0f * t * (p2 - p1);
 }
 
 // ----------------------------------------------------------------
 // 定数定義
 // ----------------------------------------------------------------
 const char kWindowTitle[] = "LE1C_12_ショウ_ズーウェン";
-const float kMoveSpeed = 1.0f;          // A/Dで動く速さ (m/s)
-const float kDeltaTime = 1.0f / 60.0f;  // デルタタイム
-const float kBodyHalfLength = 0.15f;    // 車体の長さの半分 (m)
-const int kWheelRadius = 10;            // 車輪の半径 (px)
-const int kSegments = 200;              // 台の折れ線の分割数
+const int kRoadSegments = 100; // 道の分割数
 
 // ----------------------------------------------------------------
 // エントリーポイント
@@ -84,8 +70,13 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	char keys[256] = { 0 };
 	char preKeys[256] = { 0 };
 
-	// バイクの初期位置 (x)
-	float x = 1.0f;
+	// 道の制御点（初期値）
+	Vector2 p0 = { 200.0f, 570.0f };
+	Vector2 p1 = { 800.0f, 70.0f };
+	Vector2 p2 = { 1080.0f, 570.0f };
+
+	// パラメータ t
+	float t = 0.5f;
 
 	// メインループ
 	while (Novice::ProcessMessage() == 0) {
@@ -95,35 +86,30 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		Novice::GetHitKeyStateAll(keys);
 
 		///
-		/// ↓更新処理ここから
+		/// ↓ImGui・計算処理ここから
 		///
 
-		// A/Dキーでの移動制御
-		if (keys[DIK_D]) {
-			x += kMoveSpeed * kDeltaTime;
-		}
-		if (keys[DIK_A]) {
-			x -= kMoveSpeed * kDeltaTime;
-		}
+		// ImGui ウィンドウとスライダー表示
+		ImGui::Begin("Bezier");
+		ImGui::SliderFloat("t", &t, 0.0f, 1.0f);
+		ImGui::SliderFloat("p1 x", &p1.x, 400.0f, 880.0f);
+		ImGui::SliderFloat("p1 y", &p1.y, 20.0f, 570.0f);
 
-		// 0 <= x <= 2 の範囲に限定
-		x = std::clamp(x, 0.0f, 2.0f);
+		// ベジェ曲線上の点と導関数（接線ベクトル）の計算
+		Vector2 point = Bezier(p0, p1, p2, t);
+		Vector2 derivative = BezierDerivative(p0, p1, p2, t);
 
-		// 位置と傾き・方向の計算
-		Vector2 position{ x, f(x) };
-		float slope = fPrime(x);
-		Vector2 forward = Normalize({ 1.0f, slope });
+		// B(t) と B'(t) の値を ImGui に表示
+		ImGui::Text("B(t) : (%.1f, %.1f)", point.x, point.y);
+		ImGui::Text("B'(t) : (%.1f, %.1f)", derivative.x, derivative.y);
+		ImGui::End();
 
-		// 車輪の位置（ワールド座標）
-		Vector2 backWorld = position - forward * kBodyHalfLength;
-		Vector2 frontWorld = position + forward * kBodyHalfLength;
-
-		// 車輪の位置（スクリーン座標）
-		Vector2 screenBack = WorldToScreen(backWorld);
-		Vector2 screenFront = WorldToScreen(frontWorld);
+		// 接線ベクトルの正規化と120倍化
+		Vector2 dir = Normalize(derivative);
+		Vector2 lineEnd = point + dir * 120.0f;
 
 		///
-		/// ↑更新処理ここまで
+		/// ↑ImGui・計算処理ここまで
 		///
 
 		///
@@ -133,38 +119,22 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		// 背景を描画 (青色)
 		Novice::DrawBox(0, 0, 1280, 720, 0.0f, 0x5282B8FF, kFillModeSolid);
 
-		// 地面 (y = 0) の水平線
-		Vector2 groundStart = WorldToScreen({ 0.0f, 0.0f });
-		Novice::DrawLine(0, (int)groundStart.y, 1280, (int)groundStart.y, WHITE);
-
-		// 台の折れ線を描画 (0 <= x <= 2)
-		for (int i = 0; i < kSegments; ++i) {
-			float x0 = 2.0f * (float)i / (float)kSegments;
-			float x1 = 2.0f * (float)(i + 1) / (float)kSegments;
-			Vector2 p0 = WorldToScreen({ x0, f(x0) });
-			Vector2 p1 = WorldToScreen({ x1, f(x1) });
-			Novice::DrawLine((int)p0.x, (int)p0.y, (int)p1.x, (int)p1.y, WHITE);
+		// 道（2次ベジェ曲線）を折れ線で描画
+		for (int i = 0; i < kRoadSegments; ++i) {
+			float t0 = static_cast<float>(i) / static_cast<float>(kRoadSegments);
+			float t1 = static_cast<float>(i + 1) / static_cast<float>(kRoadSegments);
+			Vector2 c0 = Bezier(p0, p1, p2, t0);
+			Vector2 c1 = Bezier(p0, p1, p2, t1);
+			Novice::DrawLine(static_cast<int>(c0.x), static_cast<int>(c0.y),
+				static_cast<int>(c1.x), static_cast<int>(c1.y), WHITE);
 		}
 
-		// 台の先端 (x = 2) の垂直ガイド線
-		Vector2 rampTop = WorldToScreen({ 2.0f, f(2.0f) });
-		Vector2 rampBottom = WorldToScreen({ 2.0f, 0.0f });
-		Novice::DrawLine((int)rampTop.x, (int)rampTop.y, (int)rampBottom.x, (int)rampBottom.y, 0xFFFFFF88);
+		// 接線（赤色の線）を描画
+		Novice::DrawLine(static_cast<int>(point.x), static_cast<int>(point.y),
+			static_cast<int>(lineEnd.x), static_cast<int>(lineEnd.y), RED);
 
-		// バイク車体（前後輪を結ぶ直線）
-		Novice::DrawLine((int)screenBack.x, (int)screenBack.y, (int)screenFront.x, (int)screenFront.y, WHITE);
-
-		// 車輪の描画（オレンジ色の円）
-		Novice::DrawEllipse((int)screenBack.x, (int)screenBack.y, kWheelRadius, kWheelRadius, 0.0f, 0xFF9900FF, kFillModeSolid);
-		Novice::DrawEllipse((int)screenFront.x, (int)screenFront.y, kWheelRadius, kWheelRadius, 0.0f, 0xFF9900FF, kFillModeSolid);
-
-		// ImGui デバッグ表示
-		ImGui::Begin("Jump Ramp");
-		ImGui::Text("A / D : move");
-		ImGui::Text("x: %.3f", x);
-		ImGui::Text("f'(x): %.3f", slope);
-		ImGui::Text("Forward: (%.3f, %.3f)", forward.x, forward.y);
-		ImGui::End();
+		// B(t) の位置に点（オレンジ色の円）を描画
+		Novice::DrawEllipse(static_cast<int>(point.x), static_cast<int>(point.y), 6, 6, 0.0f, 0xFF9900FF, kFillModeSolid);
 
 		///
 		/// ↑描画処理ここまで
